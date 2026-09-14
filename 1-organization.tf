@@ -2,4 +2,7 @@
 
 resource "aws_organizations_organization" "this" {
   feature_set = "ALL" # required for SCPs/RCPs later; "CONSOLIDATED_BILLING" only gives billing consolidation
+
+  # Each policy type must be explicitly enabled on the root before it can be attached anywhere.
+  enabled_policy_types = ["SERVICE_CONTROL_POLICY", "RESOURCE_CONTROL_POLICY"]
 }

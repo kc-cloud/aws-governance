@@ -28,7 +28,7 @@ Organizations resources can only be created from there.
 | 1 | AWS Organization | `organization.tf` |
 | 2 | Organizational Units (OUs) | `organizational_units.tf` |
 | 3 | Member accounts | `accounts.tf` |
-| 4 | Service Control Policies (SCPs) | `scp.tf` |
+| 4 | Service Control Policies (SCPs) | `scp-1.tf`, `scp-2.tf`, ... (one file per SCP) |
 | 5 | Resource Control Policies (RCPs) | `rcp.tf` |
 | 6 | IAM permission boundaries | `permission_boundaries.tf` |
 
@@ -44,5 +44,5 @@ terraform init
 terraform plan
 ```
 
-State is stored remotely in S3 (`backend.tf`), with a DynamoDB table for state locking.
-Both must exist before `terraform init` — see the AWS CLI commands used to create them.
+State is stored remotely in S3 (`backend.tf`), using S3's native locking (`use_lockfile`)
+so no DynamoDB table is needed. The bucket must exist before `terraform init`.
