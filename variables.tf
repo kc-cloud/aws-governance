@@ -9,3 +9,9 @@ variable "profile" {
   type        = string
   default     = null
 }
+
+variable "sandbox_account_id" {
+  description = "Account ID of the sandbox-kannan member account. Kept as a plain value (not a resource reference) so the aws.sandbox provider alias doesn't depend on a managed resource."
+  type        = string
+  default     = "189575358180"
+}
