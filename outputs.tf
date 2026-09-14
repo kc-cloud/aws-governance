@@ -104,3 +104,11 @@ output "developer_permission_boundary_arn" {
 output "boundary_demo_role_arn" {
   value = aws_iam_role.boundary_demo.arn
 }
+
+output "network_perimeter_test_vpc_id" {
+  value = aws_vpc.network_perimeter_test.id
+}
+
+output "s3_gateway_endpoint_id" {
+  value = aws_vpc_endpoint.s3_gateway.id
+}
