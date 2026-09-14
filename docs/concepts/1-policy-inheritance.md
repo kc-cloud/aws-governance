@@ -39,26 +39,46 @@ If we instead attached those same policies to the **Sandbox OU** rather than the
 
 ## How a single request is actually evaluated
 
-For a request made by a principal inside `workloads-prod`, here's the full evaluation chain:
+The point easy to miss (and worth catching yourself on before an interviewer does): **RCP walks up its own three-level chain exactly the same way SCP does — root → OU → account.** It's not evaluated as a single vague "resource-side check," it's three separate gates, structurally identical to the SCP chain. The only question is *whose* account each chain starts from.
+
+**Case 1 — same-account call.** A principal in `workloads-prod` calls an S3 API on a bucket that's *also* in `workloads-prod`. Here, the SCP chain (walking up from the caller) and the RCP chain (walking up from the resource) happen to be the exact same three nodes — Root, Workloads OU, `workloads-prod` — just evaluated for two different policy types at each stop:
 
 ```mermaid
 flowchart TD
-    A["Request: principal in workloads-prod<br/>calls an AWS API"] --> B{"Denied by any SCP<br/>attached to Root?"}
+    A["Request: principal in workloads-prod<br/>calls an S3 API on a bucket ALSO in workloads-prod"] --> B{"Denied by any SCP<br/>attached to Root?"}
     B -- Yes --> DENY["❌ Denied"]
     B -- No --> C{"Denied by any SCP<br/>attached to Workloads OU?"}
     C -- Yes --> DENY
     C -- No --> D{"Denied by any SCP<br/>attached to workloads-prod account?"}
     D -- Yes --> DENY
-    D -- No --> E{"Denied by any applicable RCP<br/>at any level above the RESOURCE?"}
+    D -- No --> E{"Denied by any RCP<br/>attached to Root?"}
     E -- Yes --> DENY
-    E -- No --> F{"Allowed by the caller's<br/>IAM identity-based policy?"}
-    F -- No --> DENY
-    F -- Yes --> G{"Allowed by the caller's<br/>permission boundary, if any?"}
-    G -- No --> DENY
-    G -- Yes --> ALLOW["✅ Allowed"]
+    E -- No --> F{"Denied by any RCP<br/>attached to Workloads OU?"}
+    F -- Yes --> DENY
+    F -- No --> G{"Denied by any RCP<br/>attached to workloads-prod account?"}
+    G -- Yes --> DENY
+    G -- No --> H{"Allowed by the caller's<br/>IAM identity-based policy?"}
+    H -- No --> DENY
+    H -- Yes --> I{"Allowed by the caller's<br/>permission boundary, if any?"}
+    I -- No --> DENY
+    I -- Yes --> ALLOW["✅ Allowed"]
 ```
 
-Two separate hierarchies matter here, not one: SCPs walk up from the **calling principal's** account to the root, while RCPs walk up from the **resource's** account to the root (RCPs don't care where the caller is from). A cross-account call inside the same org can therefore be subject to SCPs from the caller's account chain *and* RCPs from the resource's account chain simultaneously.
+**Case 2 — cross-account call, same org.** Now the same principal in `workloads-prod` calls an S3 API on a bucket that lives in `infra-shared-services` (under the Infrastructure OU) instead. The two chains **diverge** — they only share the root:
+
+```mermaid
+graph TD
+    Root["Root"]
+    Root --> Workloads["Workloads OU<br/>(SCP chain — caller's side)"]
+    Root --> Infrastructure["Infrastructure OU<br/>(RCP chain — resource's side)"]
+    Workloads --> Prod["workloads-prod<br/>(caller)"]
+    Infrastructure --> InfraAcct["infra-shared-services<br/>(resource)"]
+
+    style Workloads fill:#bbf,stroke:#333
+    style Infrastructure fill:#fbb,stroke:#333
+```
+
+SCPs attached to the Workloads OU or `workloads-prod` never come into play for this request at all — the RCP side only ever cares about the resource's own ancestry (Root → Infrastructure OU → `infra-shared-services`), regardless of where the caller sits. This is exactly why SCP #8 (identity perimeter) and RCP #1 (resource perimeter) in this repo are genuinely complementary rather than redundant: they walk different trees, and an org-wide guarantee needs both, not just one attached everywhere.
 
 ## Likely interview questions
 
@@ -70,3 +90,6 @@ A: The root. But that's also the highest-blast-radius place to make a mistake �
 
 **Q: Does moving an account between OUs change which SCPs apply to it?**
 A: Yes, immediately — the account stops inheriting the old OU's policies and starts inheriting the new OU's policies (still combined with whatever's at the root). This is also why "which OU is this account in" is itself a security-relevant fact, not just an organizational label.
+
+**Q: For a cross-account S3 call within the same org, does the caller's OU's SCPs and the bucket owner's OU's RCPs both get evaluated?**
+A: Yes, but they're two independent chains, not one merged one. SCPs are evaluated by walking up from the *caller's* account to the root; RCPs are evaluated by walking up from the *resource's* account to the root. If the caller and resource are in different OUs, those two chains only share the root — an SCP attached to the caller's OU and an RCP attached to the resource's OU both apply to the same request, but neither chain sees the other's OU-level policies at all.
